@@ -1,8 +1,16 @@
 import numpy as np
+import torch
+from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics.pairwise import (
+    euclidean_distances,
+    manhattan_distances,
+    cosine_distances,
+)
 
+# --- wrappers  ---
 class BaseModel:
     def fit(self, X, y):
         """Fit the model to training data."""
@@ -12,6 +20,104 @@ class BaseModel:
         """Make predictions for the input X."""
         raise NotImplementedError
 
+class Forecaster:
+    def __init__(
+        self,
+        model,                  # any BaseModel or torch‐based model
+        roc_mode: str = "raw",  # "raw" or "cluster"
+        n_clusters: int = None, # required if roc_mode=="cluster"
+        distance_metric: str = "euclidean"  # "euclidean", "manhattan", "cosine"
+    ):
+        self.model = model
+        self.roc_mode = roc_mode
+        self.distance_metric = distance_metric
+        self.raw_windows = []    # list of numpy arrays
+        self.clusters = []       # list of lists of numpy windows
+        self.centers = None      # numpy array of centroids
+
+        if roc_mode == "cluster":
+            if n_clusters is None:
+                raise ValueError("n_clusters must be set in cluster mode")
+            self.clusterer = KMeans(n_clusters=n_clusters)
+        else:
+            self.clusterer = None
+
+    def _to_numpy(self, w):
+        """Convert torch.Tensor → numpy; leave numpy alone."""
+        if isinstance(w, torch.Tensor):
+            return w.detach().cpu().numpy()
+        return w
+
+    def fit(self, X, y):
+        # leave X,y in whatever format your model expects
+        self.model.fit(X, y)
+
+    def predict(self, X):
+        # pass through to underlying model
+        return self.model.predict(X)
+
+    def build_rocs(self, windows: np.ndarray, targets: np.ndarray):
+        """
+        Perform the offline clustering+assignment step:
+        windows: shape (N, window_size, f) numpy
+        targets: shape (N,) or (N,f) numpy (only used for error calc)
+        """
+        # 1) cluster windows
+        if self.roc_mode == "cluster":
+            self.clusterer.fit(windows)
+            self.centers = self.clusterer.cluster_centers_
+            # assign each window to its KMeans label
+            labels = self.clusterer.labels_
+            self.clusters = [
+                windows[labels == k].tolist()
+                for k in range(self.clusterer.n_clusters)
+            ]
+        else:
+            # raw mode: just keep them all
+            self.raw_windows = windows.tolist()
+
+    def update_roc(self, new_window):
+        """
+        At test time, after you pick which model wins, call this to
+        enrich its RoC with the latest observed window.
+        """
+        w = self._to_numpy(new_window)
+        if self.roc_mode == "raw":
+            self.raw_windows.append(w)
+        else:
+            # append then occasionally re-cluster:
+            self.raw_windows.append(w)
+            if len(self.raw_windows) >= self.clusterer.n_clusters:
+                arr = np.stack(self.raw_windows, axis=0)
+                self.clusterer.fit(arr)
+                self.centers = self.clusterer.cluster_centers_
+                labels = self.clusterer.labels_
+                self.clusters = [
+                    arr[labels == k].tolist()
+                    for k in range(self.clusterer.n_clusters)
+                ]
+
+    def distance_to_roc(self, window):
+        """
+        Compute distances from `window` to each RoC center (or to each raw window).
+        Returns an array of shape (n_centers,) or (n_raw,).
+        """
+        w = self._to_numpy(window).reshape(1, -1)
+        if self.roc_mode == "cluster":
+            M = self.centers.reshape(self.centers.shape[0], -1)
+        else:
+            M = np.stack(self.raw_windows, axis=0).reshape(len(self.raw_windows), -1)
+
+        if self.distance_metric == "euclidean":
+            return euclidean_distances(w, M).ravel()
+        elif self.distance_metric == "manhattan":
+            return manhattan_distances(w, M).ravel()
+        elif self.distance_metric == "cosine":
+            return cosine_distances(w, M).ravel()
+        else:
+            raise ValueError(f"Unknown metric {self.distance_metric}")
+
+# --- Models ---
 class ARIMAModel(BaseModel):
     def __init__(self, order=(1, 0, 0), target_feature=0):
         self.order = order
