@@ -1,2 +1,1 @@
-from .airline import *
-from .rossmann import *
+from .temperatures import *
