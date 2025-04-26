@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 def split_time_series(data, train_ratio=0.5, val_ratio=0.25):
     # Calculate indices for the splits.
@@ -51,3 +52,6 @@ def windowing(data, train_window_size, horizon=1, train_ratio=0.5, val_ratio=0.2
     X_test, y_test = sliding_window(test, window_size=train_window_size, horizon=horizon)
     
     return X_train, y_train, X_val, y_val, X_test, y_test
+
+def asTorch(X):
+    return torch.from_numpy(X).float().unsqueeze(1)
