@@ -3,7 +3,9 @@ import torch
 
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.svm import SVR
+
 
 class Forecaster:
     def __init__(self):
@@ -55,3 +57,38 @@ class RandomForestForecaster(Forecaster):
     def predict(self, x):
         pred = self.model.predict(x.reshape(1, -1))
         return float(pred[0])
+    
+class SVRForecaster(Forecaster):
+    def __init__(self, kernel: str = 'rbf', C: float = 1.0, epsilon: float = 0.1):
+        super().__init__()
+        self.model = SVR(kernel=kernel, C=C, epsilon=epsilon)
+
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        self.model.fit(X, y)
+
+    def predict(self, x: np.ndarray):
+        x_flat = x.reshape(1, -1)
+        return float(self.model.predict(x_flat)[0])
+
+class GradientBoostingForecaster(Forecaster):
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        learning_rate: float = 0.1,
+        max_depth: int = 3,
+        random_state: int = 0
+    ):
+        super().__init__()
+        self.model = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            learning_rate=learning_rate,
+            max_depth=max_depth,
+            random_state=random_state
+        )
+
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        self.model.fit(X, y)
+
+    def predict(self, x: np.ndarray):
+        x_flat = x.reshape(1, -1)
+        return float(self.model.predict(x_flat)[0])
