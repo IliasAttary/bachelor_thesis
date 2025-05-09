@@ -56,41 +56,36 @@ class ConvAutoencoder1D(nn.Module):
         z = self.encoder(x)
         return self.decoder(z)
 
-    def encode(self, x):
+    def encode(self, x: np.ndarray) -> torch.Tensor:
         """
-        Encode a single window or batch to embeddings.
+        Encode a single univariate window.
 
-        Accepts:
-          - x: 1D numpy array of shape (L,)
-          - or 2D tensor of shape (1, L) or (L, 1)
-          - or 3D tensor of shape (N, C, L)
+        Args:
+          x: 1D numpy array of shape (window_size,)
         Returns:
-          - embedding: Tensor of shape (C', L') with no batch dim
+          Tensor of shape (C, L') with no batch dim.
         """
-        # Convert numpy to torch and add channel
-        if isinstance(x, np.ndarray):
-            x = asTorch(x)  # -> shape (1,1,L)
+        if not isinstance(x, np.ndarray):
+            raise TypeError(f"Expected np.ndarray, got {type(x)}")
 
-        # If 2D tensor, add batch and channel dims
-        if x.dim() == 2:
-            # assume (L,1) or (1,L)
-            if x.size(1) == self.window_size:
-                # shape (1,L)
-                x = x.unsqueeze(1)  # -> (1,1,L)
-            else:
-                x = x.unsqueeze(0)  # -> (?,L,1)
-                x = x.permute(0,2,1)
+        if x.ndim != 1:
+            raise ValueError(f"Expected 1D array, got shape {x.shape}")
 
-        # Ensure tensor on correct device
+        # 1) numpy → torch tensor, add batch & channel dims → (1,1,window_size)
         device = next(self.parameters()).device
-        x = x.to(device)
+        x_tensor = (
+            torch.from_numpy(x)
+                 .float()
+                 .unsqueeze(0)   # batch dim → (1, window_size)
+                 .unsqueeze(1)   # channel dim → (1, 1, window_size)
+                 .to(device)
+        )
 
-        # Encode without grad
+        # 2) forward through encoder without grad
         with torch.no_grad():
-            z = self.encoder(x)  # -> (N, C', L')
+            z = self.encoder(x_tensor)  # → (1, C, L')
 
-        # Remove batch dim if present
-        if z.size(0) == 1:
-            z = z.squeeze(0)
+        # 3) drop batch dim → (C, L')
+        z = z.squeeze(0)
 
         return z
