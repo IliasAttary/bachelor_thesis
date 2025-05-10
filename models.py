@@ -14,7 +14,7 @@ from sklearn.tree import DecisionTreeRegressor
 
 class Forecaster:
     def __init__(self):
-        self.roc =  []
+        self.rocs = {"raw": [], "latent": []}
         self.centers = []
 
     def fit(self, X, y):
@@ -327,7 +327,8 @@ class LSTMForecaster(Forecaster):
                 epoch_loss += loss.item() * xb.size(0)
             
             avg_loss = epoch_loss / len(dataset)
-            print(f" Epoch {_ + 1}/{self.epochs} - Loss: {avg_loss:.6f}")
+            if _ == 0 or (_ + 1) % 15 == 0 or (_ + 1) == self.epochs:
+                print(f"{_+1}/{self.epochs} {avg_loss:.5f}", end=" | ")
         self.model.eval()
 
     def predict(self, x: np.ndarray) -> float:
@@ -443,7 +444,8 @@ class BiLSTMForecaster(Forecaster):
                 epoch_loss += loss.item() * xb.size(0)
 
             avg_loss = epoch_loss / len(dataset)
-            print(f" Epoch {_ + 1}/{self.epochs} - Loss: {avg_loss:.6f}")            
+            if _ == 0 or (_ + 1) % 15 == 0 or (_ + 1) == self.epochs:
+                print(f"{_+1}/{self.epochs} {avg_loss:.5f}", end=" | ")          
         self.model.eval()
 
     def predict(self, x: np.ndarray) -> float:
@@ -555,7 +557,8 @@ class CNNLSTMForecaster(Forecaster):
                 epoch_loss += loss.item() * xb.size(0)
 
             avg_loss = epoch_loss / len(dataset)
-            print(f" Epoch {_ + 1}/{self.epochs} - Loss: {avg_loss:.6f}")                     
+            if _ == 0 or (_ + 1) % 15 == 0 or (_ + 1) == self.epochs:
+                print(f"{_+1}/{self.epochs} {avg_loss:.5f}", end=" | ")                
         self.model.eval()
 
     def predict(self, x: np.ndarray) -> float:
