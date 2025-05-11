@@ -1,292 +1,576 @@
 import numpy as np
+
 import torch
-from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
+import torch.nn as nn
+
 from statsmodels.tsa.arima.model import ARIMA
-from sklearn.metrics.pairwise import (
-    euclidean_distances,
-    manhattan_distances,
-    cosine_distances,
-)
+from statsmodels.tsa.holtwinters import ExponentialSmoothing, SimpleExpSmoothing
 
-# --- wrappers  ---
-class BaseModel:
-    def fit(self, X, y):
-        """Fit the model to training data."""
-        raise NotImplementedError
-
-    def predict(self, X):
-        """Make predictions for the input X."""
-        raise NotImplementedError
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.neural_network import MLPRegressor
+from sklearn.svm import SVR
+from sklearn.tree import DecisionTreeRegressor
 
 class Forecaster:
+    def __init__(self):
+        self.rocs = {"raw": [], "latent": []}
+        self.centers = []
+
+    def fit(self, X, y):
+        pass
+
+    def predict(self, X):
+        pass
+    
+    def compute_kmeans_centers(self):
+        pass
+
+# ---- Traditional Model ----
+
+class ARIMAForecaster(Forecaster):
+    def __init__(self, order: tuple[int,int,int] = (0,1,1), enforce_stationarity: bool = True, enforce_invertibility: bool = True):
+        super().__init__()
+        self.order = order
+        self.enforce_stationarity = enforce_stationarity
+        self.enforce_invertibility = enforce_invertibility
+
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        # No global training—ARIMA will be fit on each window at predict time.
+        return self
+
+    def predict(self, x: np.ndarray) -> float:
+        # ensure a 1-D array of past values
+        x1d = x.ravel().astype(np.float64)
+
+        # fit ARIMA on this window
+        model = ARIMA(
+            endog=x1d,
+            order=self.order,
+            enforce_stationarity=self.enforce_stationarity,
+            enforce_invertibility=self.enforce_invertibility
+        )
+        fitted = model.fit()
+        return float(fitted.forecast(steps=1)[0])
+
+class ExpSmoothingForecaster(Forecaster):
     def __init__(
         self,
-        model,                  # any BaseModel or torch‐based model
-        roc_mode: str = "raw",  # "raw" or "cluster"
-        n_clusters: int = None, # required if roc_mode=="cluster"
-        distance_metric: str = "euclidean"  # "euclidean", "manhattan", "cosine"
+        trend: str = None,
+        seasonal: str = None,
+        seasonal_periods: int = None,
+        smoothing_level: float = None,
+        smoothing_slope: float = None,
+        smoothing_seasonal: float = None,
+        optimized: bool = True
     ):
-        self.model = model
-        self.roc_mode = roc_mode
-        self.distance_metric = distance_metric
-        self.raw_windows = []    # list of numpy arrays
-        self.clusters = []       # list of lists of numpy windows
-        self.centers = None      # numpy array of centroids
+        """
+        Args:
+            trend: 'add', 'mul', or None
+            seasonal: 'add', 'mul', or None
+            seasonal_periods: number of periods in a season (required if seasonal is not None)
+            smoothing_level: alpha (0<alpha<1)
+            smoothing_slope: beta for trend
+            smoothing_seasonal: gamma for seasonal
+            optimized: whether to auto-optimize parameters
+        """
+        super().__init__()
+        self.trend = trend
+        self.seasonal = seasonal
+        self.seasonal_periods = seasonal_periods
+        self.smoothing_level = smoothing_level
+        self.smoothing_slope = smoothing_slope
+        self.smoothing_seasonal = smoothing_seasonal
+        self.optimized = optimized
 
-        if roc_mode == "cluster":
-            if n_clusters is None:
-                raise ValueError("n_clusters must be set in cluster mode")
-            self.clusterer = KMeans(n_clusters=n_clusters)
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        # No global training
+        return self
+
+    def predict(self, x: np.ndarray) -> float:
+        arr = x.ravel().astype(np.float64)
+
+        if self.trend is None and self.seasonal is None:
+            # simple exponential smoothing
+            model = SimpleExpSmoothing(arr)
+            fitted = model.fit(
+                smoothing_level=self.smoothing_level,
+                optimized=self.optimized
+            )
         else:
-            self.clusterer = None
+            # Holt-Winters exponential smoothing
+            model = ExponentialSmoothing(
+                arr,
+                trend=self.trend,
+                seasonal=self.seasonal,
+                seasonal_periods=self.seasonal_periods
+            )
+            fitted = model.fit(
+                smoothing_level=self.smoothing_level,
+                smoothing_slope=self.smoothing_slope,
+                smoothing_seasonal=self.smoothing_seasonal,
+                optimized=self.optimized
+            )
 
-    def _to_numpy(self, w):
-        """Convert torch.Tensor → numpy; leave numpy alone."""
-        if isinstance(w, torch.Tensor):
-            return w.detach().cpu().numpy()
-        return w
+        return float(fitted.forecast(1)[0])
+
+# ---- Regression Models ----
+
+class LinearRegressionForecaster(Forecaster):
+    def __init__(self):
+        super().__init__()
+        self.model = LinearRegression()
 
     def fit(self, X, y):
-        # leave X,y in whatever format your model expects
         self.model.fit(X, y)
 
-    def predict(self, X):
-        # pass through to underlying model
-        return self.model.predict(X)
+    def predict(self, x):
+        pred = self.model.predict(x.reshape(1, -1))
+        return float(pred[0])
 
-    def build_rocs(self, windows: np.ndarray, targets: np.ndarray):
-        """
-        Perform the offline clustering+assignment step:
-        windows: shape (N, window_size, f) numpy
-        targets: shape (N,) or (N,f) numpy (only used for error calc)
-        """
-        # 1) cluster windows
-        if self.roc_mode == "cluster":
-            self.clusterer.fit(windows)
-            self.centers = self.clusterer.cluster_centers_
-            # assign each window to its KMeans label
-            labels = self.clusterer.labels_
-            self.clusters = [
-                windows[labels == k].tolist()
-                for k in range(self.clusterer.n_clusters)
-            ]
-        else:
-            # raw mode: just keep them all
-            self.raw_windows = windows.tolist()
-
-    def update_roc(self, new_window):
-        """
-        At test time, after you pick which model wins, call this to
-        enrich its RoC with the latest observed window.
-        """
-        w = self._to_numpy(new_window)
-        if self.roc_mode == "raw":
-            self.raw_windows.append(w)
-        else:
-            # append then occasionally re-cluster:
-            self.raw_windows.append(w)
-            if len(self.raw_windows) >= self.clusterer.n_clusters:
-                arr = np.stack(self.raw_windows, axis=0)
-                self.clusterer.fit(arr)
-                self.centers = self.clusterer.cluster_centers_
-                labels = self.clusterer.labels_
-                self.clusters = [
-                    arr[labels == k].tolist()
-                    for k in range(self.clusterer.n_clusters)
-                ]
-
-    def distance_to_roc(self, window):
-        """
-        Compute distances from `window` to each RoC center (or to each raw window).
-        Returns an array of shape (n_centers,) or (n_raw,).
-        """
-        w = self._to_numpy(window).reshape(1, -1)
-        if self.roc_mode == "cluster":
-            M = self.centers.reshape(self.centers.shape[0], -1)
-        else:
-            M = np.stack(self.raw_windows, axis=0).reshape(len(self.raw_windows), -1)
-
-        if self.distance_metric == "euclidean":
-            return euclidean_distances(w, M).ravel()
-        elif self.distance_metric == "manhattan":
-            return manhattan_distances(w, M).ravel()
-        elif self.distance_metric == "cosine":
-            return cosine_distances(w, M).ravel()
-        else:
-            raise ValueError(f"Unknown metric {self.distance_metric}")
-
-# --- Models ---
-class ARIMAModel(BaseModel):
-    def __init__(self, order=(1, 0, 0), target_feature=0):
-        self.order = order
-        self.target_feature = target_feature
-        self.model_fit = None
-        self.window_size = None
+class RandomForestForecaster(Forecaster):
+    def __init__(
+        self,
+        n_estimators: int = 10,
+        max_depth: int = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        random_state: int = None
+    ):
+        super().__init__()
+        self.model = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            random_state=random_state
+        )
 
     def fit(self, X, y):
-        """
-        Build one ARIMA on the entire training series.
-        We reconstruct the “history” by taking the first window
-        plus all subsequent targets.
-        """
-        # remember window length
-        self.window_size = X.shape[1]
-        
-        # build a 1D series of past + targets
-        if X.ndim == 2:
-            history = list(X[0])
-        else:  # X.ndim == 3
-            history = list(X[0, :, self.target_feature])
-        history.extend(y if X.ndim == 2 else y[:, self.target_feature])
+        self.model.fit(X, y)
 
-        # one expensive fit
-        self.model_fit = ARIMA(history, order=self.order).fit()
+    def predict(self, x):
+        pred = self.model.predict(x.reshape(1, -1))
+        return float(pred[0])
+    
+class SVRForecaster(Forecaster):
+    def __init__(self, kernel: str = 'rbf', C: float = 1.0, epsilon: float = 0.1):
+        super().__init__()
+        self.model = SVR(kernel=kernel, C=C, epsilon=epsilon)
 
-    def predict(self, X):
+    def fit(self, X, y):
+        self.model.fit(X, y)
+
+    def predict(self, x):
+        pred = self.model.predict(x.reshape(1, -1))
+        return float(pred[0])
+
+class GradientBoostingForecaster(Forecaster):
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        learning_rate: float = 0.1,
+        max_depth: int = 3,
+        random_state: int = 0
+    ):
+        super().__init__()
+        self.model = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            learning_rate=learning_rate,
+            max_depth=max_depth,
+            random_state=random_state
+        )
+
+    def fit(self, X, y):
+        self.model.fit(X, y)
+
+    def predict(self, x):
+        pred = self.model.predict(x.reshape(1, -1))
+        return float(pred[0])
+    
+class DecisionTreeForecaster(Forecaster):
+    def __init__(
+        self,
+        max_depth: int = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        random_state: int = None
+    ):
         """
-        For each window in X:
-          - append that window’s series onto the fitted model state
-            (no refit of parameters),
-          - then forecast one step ahead of the *end* of that window.
-        Returns a 1D numpy array of length = n_windows.
+        Args:
+            max_depth: maximum depth of the tree
+            min_samples_split: minimum samples required to split an internal node
+            min_samples_leaf: minimum samples required to be at a leaf node
+            random_state: seed for reproducibility
         """
-        if self.model_fit is None:
-            raise ValueError("Model must be fitted before calling predict().")
-        
-        forecasts = []
-        for i in range(X.shape[0]):
-            # extract just the target series for this window
-            if X.ndim == 2:
-                series = X[i]
-            else:
-                series = X[i, :, self.target_feature]
+        super().__init__()
+        self.model = DecisionTreeRegressor(
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            random_state=random_state
+        )
+
+    def fit(self, X, y):
+        self.model.fit(X, y)
+
+    def predict(self, x):
+        pred = self.model.predict(x.reshape(1, -1))
+        return float(pred[0])
+
+# ---- Neural network-based Models ----
+
+class MLPForecaster(Forecaster):
+    def __init__(
+        self,
+        hidden_layer_sizes: tuple = (64, 32),
+        activation: str = 'relu',
+        solver: str = 'adam',
+        learning_rate_init: float = 1e-3,
+        max_iter: int = 200,
+        early_stopping: bool = True,
+        n_iter_no_change: int = 10,
+        random_state: int = None
+    ):
+        super().__init__()
+        self.model = MLPRegressor(
+            hidden_layer_sizes=hidden_layer_sizes,
+            activation=activation,
+            solver=solver,
+            learning_rate_init=learning_rate_init,
+            max_iter=max_iter,
+            early_stopping=early_stopping,
+            n_iter_no_change=n_iter_no_change,
+            random_state=random_state
+        )
+
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        self.model.fit(X, y)
+
+    def predict(self, x: np.ndarray) -> float:
+        x_flat = x.reshape(1, -1)
+        return float(self.model.predict(x_flat)[0])
+
+class LSTMForecaster(Forecaster):
+    class _LSTMNet(torch.nn.Module):
+        def __init__(self, input_size: int, hidden_size: int, num_layers: int, dropout: float):
+            super().__init__()
+            self.lstm = torch.nn.LSTM(
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0
+            )
+            self.fc = torch.nn.Linear(hidden_size, 1)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            # x: (batch, seq_len, input_size)
+            out, _ = self.lstm(x)
+            # take the last time‐step’s output
+            last = out[:, -1, :]             # (batch, hidden_size)
+            return self.fc(last)             # (batch, 1)
+
+    def __init__(
+        self,
+        window_size: int,
+        hidden_size: int = 100,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+        lr: float = 1e-2,
+        epochs: int = 30,
+        batch_size: int = 64
+    ):
+        """
+        Args:
+            window_size: number of past timesteps per sample
+            hidden_size: LSTM hidden dimension
+            num_layers: number of LSTM layers
+            dropout: dropout between LSTM layers
+            lr: learning rate
+            epochs: training epochs
+            batch_size: training batch size
+        """
+        super().__init__()
+        self.window_size = window_size
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # build the LSTM+FC model
+        self.model = self._LSTMNet(
+            input_size=1,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout
+        ).to(self.device)
+        # loss & optimizer
+        self.criterion = torch.nn.MSELoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.epochs = epochs
+        self.batch_size = batch_size
+
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        # to tensors and reshape for LSTM: (batch, seq_len, input_size=1)
+        X_t = torch.from_numpy(X.astype(np.float32)).unsqueeze(-1).to(self.device)
+        y_t = torch.from_numpy(y.astype(np.float32)).unsqueeze(-1).to(self.device)
+
+        dataset = torch.utils.data.TensorDataset(X_t, y_t)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+        self.model.train()
+        for _ in range(self.epochs):
+            epoch_loss = 0.0
+            for xb, yb in loader:
+                self.optimizer.zero_grad()
+                preds = self.model(xb)
+                loss = self.criterion(preds, yb)
+                loss.backward()
+                self.optimizer.step()
+                epoch_loss += loss.item() * xb.size(0)
             
-            # append new observations to the existing state (refit=False → reuse params)
-            # .append returns a new Results object with updated state
-            rolled = self.model_fit.append(endog=series, refit=False)
-            
-            # forecast 1 step ahead from the end of that window
-            fc = rolled.forecast(steps=1)[0]
-            forecasts.append(fc)
+            avg_loss = epoch_loss / len(dataset)
+            if _ == 0 or (_ + 1) % 15 == 0 or (_ + 1) == self.epochs:
+                print(f"{_+1}/{self.epochs} {avg_loss:.5f}", end=" | ")
+        self.model.eval()
 
-        return np.array(forecasts)
-
-class RFModel(BaseModel):
-    def __init__(self, n_estimators=10, random_state=0,
-                 target_feature=0, multi_output=False):
+    def predict(self, x: np.ndarray) -> float:
         """
-        single-target : multi_output=False (default)
-          – y can be 1D (n_samples,) or 2D (n_samples, n_features) but we only train/predict target_feature
-        multi-output : multi_output=True
-          – y must be 2D (n_samples, n_outputs) and we train/predict all outputs
+        x can be either
+          • a 1-D array of length window_size, or
+          • a 2-D array of shape (1, window_size)
+        This will reshape it to (1, window_size, 1) and return a scalar.
         """
-        self.model = RandomForestRegressor(n_estimators=n_estimators,
-                                           random_state=random_state)
-        self.target_feature = target_feature
-        self.multi_output = multi_output
+        # ensure numpy float32
+        x_np = x.astype(np.float32)
 
-    def _flatten_X(self, X):
-        # common flatten logic
-        if X.ndim == 3:
-            n, w, f = X.shape
-            return X.reshape(n, w * f)
-        elif X.ndim == 2:
-            return X
+        # if 1-D, make it a batch of size one
+        if x_np.ndim == 1:
+            x_np = x_np[np.newaxis, :]
+        elif x_np.ndim == 2 and x_np.shape[0] == 1:
+            # already a single batch
+            pass
         else:
-            raise ValueError("X must be 2D or 3D.")
+            raise ValueError(f"Expected x to be 1-D or shape (1, window), got {x_np.shape}")
 
-    def fit(self, X, y):
+        # now x_np is (batch=1, seq_len=window_size)
+        x_t = torch.from_numpy(x_np).unsqueeze(-1).to(self.device)
+        # → (1, window_size, 1)
+
+        self.model.eval()
+        with torch.no_grad():
+            out = self.model(x_t)  # (1, 1)
+        return float(out.item())
+
+class BiLSTMForecaster(Forecaster):
+    class _BiLSTMNet(torch.nn.Module):
+        def __init__(
+            self,
+            input_size: int,
+            hidden_size: int,
+            num_layers: int,
+            dropout: float,
+        ):
+            super().__init__()
+            self.lstm = torch.nn.LSTM(
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0,
+                bidirectional=True,
+            )
+            # since bidirectional, hidden outputs are hidden_size * 2
+            self.fc = torch.nn.Linear(hidden_size * 2, 1)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            # x: (batch, seq_len, input_size)
+            out, _ = self.lstm(x)               # → (batch, seq_len, hidden_size * 2)
+            last = out[:, -1, :]               # → (batch, hidden_size * 2)
+            return self.fc(last)               # → (batch, 1)
+
+    def __init__(
+        self,
+        window_size: int,
+        hidden_size: int = 100,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+        lr: float = 1e-2,
+        epochs: int = 30,
+        batch_size: int = 64,
+    ):
         """
-        X : (n_samples, window_size) or (n_samples, window_size, n_features)
-        y : (n_samples,) or (n_samples, n_features)
+        Args:
+            window_size: number of time steps per sample
+            hidden_size: size of LSTM hidden state (per direction)
+            num_layers: number of stacked LSTM layers
+            dropout: dropout between LSTM layers
+            lr: learning rate
+            epochs: training epochs
+            batch_size: training batch size
         """
-        X_flat = self._flatten_X(X)
+        super().__init__()
+        self.window_size = window_size
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # decide which y to pass to sklearn
-        if y.ndim == 1:
-            # always OK: single-target
-            y_train = y
-        elif y.ndim == 2:
-            if self.multi_output:
-                # use all columns of y
-                y_train = y
-            else:
-                # only the specified target_feature column
-                y_train = y[:, self.target_feature]
-        else:
-            raise ValueError("y must be 1D or 2D.")
+        self.model = self._BiLSTMNet(
+            input_size=1,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+        ).to(self.device)
 
-        self.model.fit(X_flat, y_train)
+        self.criterion = torch.nn.MSELoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.epochs = epochs
+        self.batch_size = batch_size
 
-    def predict(self, X):
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        # build tensors of shape (batch, seq_len, input_size=1)
+        X_t = torch.from_numpy(X.astype(np.float32)).unsqueeze(-1).to(self.device)
+        y_t = torch.from_numpy(y.astype(np.float32)).unsqueeze(-1).to(self.device)
+
+        dataset = torch.utils.data.TensorDataset(X_t, y_t)
+        loader = torch.utils.data.DataLoader(
+            dataset, batch_size=self.batch_size, shuffle=True
+        )
+
+        self.model.train()
+        for _ in range(self.epochs):
+            epoch_loss = 0.0
+            for xb, yb in loader:
+                self.optimizer.zero_grad()
+                preds = self.model(xb)
+                loss = self.criterion(preds, yb)
+                loss.backward()
+                self.optimizer.step()
+                epoch_loss += loss.item() * xb.size(0)
+
+            avg_loss = epoch_loss / len(dataset)
+            if _ == 0 or (_ + 1) % 15 == 0 or (_ + 1) == self.epochs:
+                print(f"{_+1}/{self.epochs} {avg_loss:.5f}", end=" | ")          
+        self.model.eval()
+
+    def predict(self, x: np.ndarray) -> float:
         """
-        Returns:
-          – if multi_output=False: a 1D array (n_samples,)
-          – if multi_output=True: a 2D array (n_samples, n_outputs)
+        x: 1D array of length window_size, or 2D shape (1, window_size)
+        returns: scalar next-step forecast
         """
-        X_flat = self._flatten_X(X)
-        preds = self.model.predict(X_flat)
+        x_np = x.astype(np.float32)
+        if x_np.ndim == 1:
+            x_np = x_np[np.newaxis, :]
+        elif not (x_np.ndim == 2 and x_np.shape[0] == 1):
+            raise ValueError(f"Expected 1D or (1, window), got {x_np.shape}")
 
-        # sanity‐check shapes
-        if not self.multi_output and preds.ndim == 2:
-            # if somehow sklearn returned multi‐col output, collapse
-            return preds[:, self.target_feature]
-        return preds
-        
-class LinearRegressionModel(BaseModel):
-    def __init__(self, target_feature=0, multi_output=False):
-        """
-        - single‑target (default): multi_output=False  
-          y can be 1D or 2D, but we only use y[:, target_feature]  
-        - multi‑output: multi_output=True  
-          y must be 2D, and we train/predict all columns
-        """
-        self.model = LinearRegression()
-        self.target_feature = target_feature
-        self.multi_output = multi_output
+        x_t = torch.from_numpy(x_np).unsqueeze(-1).to(self.device)  # (1, window, 1)
+        self.model.eval()
+        with torch.no_grad():
+            out = self.model(x_t)  # (1, 1)
+        return float(out.item())
+ 
+class CNNLSTMForecaster(Forecaster):
+    class _CNNLSTMNet(nn.Module):
+        def __init__(
+            self,
+            input_size: int,
+            conv_channels: tuple[int, ...],
+            kernel_size: int,
+            lstm_hidden_size: int,
+            lstm_num_layers: int,
+            dropout: float
+        ):
+            super().__init__()
+            # build conv1d feature extractor
+            conv_layers = []
+            in_ch = input_size
+            for out_ch in conv_channels:
+                conv_layers.append(nn.Conv1d(in_ch, out_ch, kernel_size, padding=kernel_size // 2))
+                conv_layers.append(nn.ReLU())
+                if dropout > 0:
+                    conv_layers.append(nn.Dropout(dropout))
+                in_ch = out_ch
+            self.conv = nn.Sequential(*conv_layers)
 
-    def _flatten_X(self, X):
-        # turns (n, w, f) → (n, w*f); leaves (n, w) alone
-        if X.ndim == 3:
-            n, w, f = X.shape
-            return X.reshape(n, w * f)
-        elif X.ndim == 2:
-            return X
-        else:
-            raise ValueError("X must be 2D or 3D")
+            # LSTM on conv outputs
+            self.lstm = nn.LSTM(
+                input_size=conv_channels[-1],
+                hidden_size=lstm_hidden_size,
+                num_layers=lstm_num_layers,
+                batch_first=True,
+                dropout=dropout if lstm_num_layers > 1 else 0.0
+            )
+            self.fc = nn.Linear(lstm_hidden_size, 1)
 
-    def fit(self, X, y):
-        """
-        X: (n_samples, window_size) or (n_samples, window_size, n_features)
-        y: (n_samples,) or (n_samples, n_features)
-        """
-        X_flat = self._flatten_X(X)
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            # x: (batch, seq_len, input_size=1)
+            x = x.permute(0, 2, 1)       # → (batch, channels=1, seq_len)
+            x = self.conv(x)             # → (batch, conv_channels[-1], seq_len)
+            x = x.permute(0, 2, 1)       # → (batch, seq_len, conv_channels[-1])
+            out, _ = self.lstm(x)        # → (batch, seq_len, hidden)
+            last = out[:, -1, :]         # → (batch, hidden)
+            return self.fc(last)         # → (batch, 1)
 
-        # pick the right y for training
-        if y.ndim == 1:
-            y_train = y
-        elif y.ndim == 2:
-            if self.multi_output:
-                y_train = y
-            else:
-                y_train = y[:, self.target_feature]
-        else:
-            raise ValueError("y must be 1D or 2D")
+    def __init__(
+        self,
+        window_size: int,
+        conv_channels: tuple[int, ...] = (32, 64),
+        kernel_size: int = 3,
+        lstm_hidden_size: int = 100,
+        lstm_num_layers: int = 1,
+        dropout: float = 0.0,
+        lr: float = 1e-2,
+        epochs: int = 30,
+        batch_size: int = 32
+    ):
+        super().__init__()
+        self.window_size = window_size
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.model.fit(X_flat, y_train)
+        self.model = self._CNNLSTMNet(
+            input_size=1,
+            conv_channels=conv_channels,
+            kernel_size=kernel_size,
+            lstm_hidden_size=lstm_hidden_size,
+            lstm_num_layers=lstm_num_layers,
+            dropout=dropout
+        ).to(self.device)
 
-    def predict(self, X):
-        """
-        Returns:
-          - if multi_output=False: 1D array (n_samples,)
-          - if multi_output=True: 2D array (n_samples, n_outputs)
-        """
-        X_flat = self._flatten_X(X)
-        preds = self.model.predict(X_flat)
+        self.criterion = nn.MSELoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.epochs = epochs
+        self.batch_size = batch_size
 
-        # guard: if somehow we got 2D but only wanted one column
-        if not self.multi_output and preds.ndim == 2:
-            return preds[:, self.target_feature]
-        return preds
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        # X: (n_samples, window_size), y: (n_samples,)
+        X_t = torch.from_numpy(X.astype(np.float32)).unsqueeze(-1).to(self.device)
+        y_t = torch.from_numpy(y.astype(np.float32)).unsqueeze(-1).to(self.device)
+
+        dataset = torch.utils.data.TensorDataset(X_t, y_t)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+        self.model.train()
+        for _ in range(self.epochs):
+            epoch_loss = 0.0
+            for xb, yb in loader:
+                self.optimizer.zero_grad()
+                preds = self.model(xb)
+                loss = self.criterion(preds, yb)
+                loss.backward()
+                self.optimizer.step()
+                epoch_loss += loss.item() * xb.size(0)
+
+            avg_loss = epoch_loss / len(dataset)
+            if _ == 0 or (_ + 1) % 15 == 0 or (_ + 1) == self.epochs:
+                print(f"{_+1}/{self.epochs} {avg_loss:.5f}", end=" | ")                
+        self.model.eval()
+
+    def predict(self, x: np.ndarray) -> float:
+        # Accepts 1D array (window_size,) or 2D array (1, window_size)
+        x_np = x.astype(np.float32)
+        if x_np.ndim == 1:
+            x_np = x_np[np.newaxis, :]
+        elif not (x_np.ndim == 2 and x_np.shape[0] == 1):
+            raise ValueError(f"Expected 1D or shape (1, window), got {x_np.shape}")
+
+        x_t = torch.from_numpy(x_np).unsqueeze(-1).to(self.device)  # → (1, window_size, 1)
+        self.model.eval()
+        with torch.no_grad():
+            out = self.model(x_t)  # → (1, 1)
+        return float(out.item())
