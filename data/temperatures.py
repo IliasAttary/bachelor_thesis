@@ -9,9 +9,6 @@ class Temperatures:
             base = os.path.dirname(os.path.abspath(__file__))
             path = os.path.join(base, 'daily-min-temperatures.csv')
 
-        # Save mean and standard deviation
-        self.mean = self.data.mean()
-        self.std = self.data.std()
         # Read CSV, parse 'Date' as datetime index
         self.df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
         # Save raw copy
@@ -21,6 +18,10 @@ class Temperatures:
         series = self.df["Temp"].astype(float)
         self.index = series.index
         self.data = series.to_numpy(copy=True)
+
+        # Save mean and standard deviation
+        self.mean = self.data.mean()
+        self.std = self.data.std()
 
     def inverse_transform(self, arr, isnormalized = True):
         if not isnormalized:
