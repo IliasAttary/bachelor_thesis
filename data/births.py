@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 class Births:
-    def __init__(self, path=None, normalize=True):
+    def __init__(self, path=None):
         # Determine file path
         if path is None:
             base = os.path.dirname(os.path.abspath(__file__))
@@ -19,13 +19,6 @@ class Births:
         series = self.df["Births"].astype(float)
         self.index = series.index
         self.data = series.to_numpy(copy=True)
-
-        # Normalization
-        self.normalize = normalize
-        self.mean = self.data.mean()
-        self.std = self.data.std()
-        if normalize:
-            self.data = (self.data - self.mean) / self.std
 
     def inverse_transform(self, arr):
         if not self.normalize:
