@@ -11,11 +11,13 @@ from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR
 from sklearn.tree import DecisionTreeRegressor
+from sklearn.cluster import KMeans
+from kneed import KneeLocator
 
 class Forecaster:
     def __init__(self):
         self.rocs = {"raw": [], "latent": []}
-        self.centers = []
+        self.centers = {"raw": [], "latent": []}
 
     def fit(self, X, y):
         pass
@@ -23,8 +25,34 @@ class Forecaster:
     def predict(self, X):
         pass
     
-    def compute_kmeans_centers(self):
-        pass
+    @staticmethod
+    def _find_best_k_elbow(data, k_min=2, k_max=10):
+        """
+        Uses the elbow method with automatic knee detection to pick the best k.
+        """
+        n_samples = data.shape[0]
+        ks = list(range(k_min, min(k_max, n_samples - 1) + 1))
+        inertias = []
+        for k in ks:
+            km = KMeans(n_clusters=k, random_state=42).fit(data)
+            inertias.append(km.inertia_)
+        kl = KneeLocator(ks, inertias, curve="convex", direction="decreasing")
+        return kl.knee
+
+    def compute_kmeans_centers(self, k_min=2, k_max=10):
+        """
+        For each of 'raw' and 'latent' RoCs, finds the optimal k via elbow+knee
+        and stores the corresponding cluster centers.
+        """
+        for mode in ("raw", "latent"):
+            data = np.array(self.rocs[mode])
+            # if too few samples, skip clustering
+            if data.shape[0] < k_min:
+                self.centers[mode] = data
+                continue
+            best_k = self._find_best_k_elbow(data, k_min, k_max)
+            km = KMeans(n_clusters=best_k, random_state=42).fit(data)
+            self.centers[mode] = km.cluster_centers_
 
 # ---- Traditional Model ----
 
