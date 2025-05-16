@@ -17,7 +17,7 @@ from kneed import KneeLocator
 class Forecaster:
     def __init__(self):
         self.rocs = {"raw": [], "latent": []}
-        self.centers = {"raw": [], "latent": []}
+        self.centers = []
 
     def fit(self, X, y):
         pass
@@ -25,34 +25,48 @@ class Forecaster:
     def predict(self, X):
         pass
     
-    @staticmethod
-    def _find_best_k_elbow(data, k_min=2, k_max=10):
-        """
-        Uses the elbow method with automatic knee detection to pick the best k.
-        """
-        n_samples = data.shape[0]
-        ks = list(range(k_min, min(k_max, n_samples - 1) + 1))
+    def compute_kmeans_centers(self, k_min=2, k_max=10, random_state=0):
+        # Extract latent windows
+        latent_windows = self.rocs.get("latent", [])
+        if not latent_windows:
+            raise ValueError("No latent windows available for clustering.")
+
+        # Determine integer bounds for k
+        k_min_int = max(2, int(k_min))
+        k_max_int = max(k_min_int, int(k_max))
+
+        # Stack flattened latent windows into numpy array X
+        X = np.vstack([
+            (w.detach().cpu().numpy() if isinstance(w, torch.Tensor) else np.array(w))
+            .flatten() for w in latent_windows
+        ])
+
+        # Compute inertia for each k
+        ks = list(range(k_min_int, k_max_int + 1))
         inertias = []
         for k in ks:
-            km = KMeans(n_clusters=k, random_state=42).fit(data)
+            km = KMeans(n_clusters=k, random_state=random_state)
+            km.fit(X)
             inertias.append(km.inertia_)
-        kl = KneeLocator(ks, inertias, curve="convex", direction="decreasing")
-        return kl.knee
 
-    def compute_kmeans_centers(self, k_min=2, k_max=10):
-        """
-        For each of 'raw' and 'latent' RoCs, finds the optimal k via elbow+knee
-        and stores the corresponding cluster centers.
-        """
-        for mode in ("raw", "latent"):
-            data = np.array(self.rocs[mode])
-            # if too few samples, skip clustering
-            if data.shape[0] < k_min:
-                self.centers[mode] = data
-                continue
-            best_k = self._find_best_k_elbow(data, k_min, k_max)
-            km = KMeans(n_clusters=best_k, random_state=42).fit(data)
-            self.centers[mode] = km.cluster_centers_
+        # Use KneeLocator to pick elbow k (fallback to k_min_int)
+        kl = KneeLocator(ks, inertias, curve='convex', direction='decreasing')
+        best_k = kl.elbow or k_min_int
+
+        # Final k-means on X
+        km_final = KMeans(n_clusters=best_k, random_state=random_state).fit(X)
+        centers_flat = km_final.cluster_centers_  # shape (best_k, D)
+
+        # Convert each center back to latent shape and to Tensor
+        orig_shape = latent_windows[0].shape  # (C, L)
+        centers = []
+        for c in centers_flat:
+            arr = c.reshape(orig_shape)
+            centers.append(torch.tensor(arr, dtype=torch.float32))
+
+        # Preserve rocs; set new centers
+        self.centers = centers
+        return best_k
 
 # ---- Traditional Model ----
 
