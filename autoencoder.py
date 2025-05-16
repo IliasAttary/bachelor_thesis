@@ -37,12 +37,12 @@ class ConvAutoencoder1D(nn.Module):
 
         self.decoder = nn.Sequential(
             nn.ConvTranspose1d(latent_channels, 64, kernel_size=2, stride=2, output_padding=op1), # -> l1
-            nn.BatchNorm1d(64),
+            nn.InstanceNorm1d(64, affine=True),
             nn.ReLU(),
             nn.Dropout(dropout_p),
 
             nn.ConvTranspose1d(64, 32, kernel_size=2, stride=2, output_padding=op2 ),
-            nn.BatchNorm1d(32),
+            nn.InstanceNorm1d(32, affine=True),
             nn.ReLU(),
             nn.Dropout(dropout_p),
 
