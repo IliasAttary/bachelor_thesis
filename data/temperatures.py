@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 class Temperatures:
-    def __init__(self, path=None):
+    def __init__(self, path=None, length=None):
         # Determine file path
         if path is None:
             base = os.path.dirname(os.path.abspath(__file__))
@@ -11,6 +11,9 @@ class Temperatures:
 
         # Read CSV, parse 'Date' as datetime index
         self.df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
+        # Keep only last "length" elements
+        if length is not None:
+            self.df = self.df.iloc[-length:]
         # Save raw copy
         self.raw = self.df.copy()
 
