@@ -71,7 +71,7 @@ class Forecaster:
 # ---- Traditional Model ----
 
 class ARIMAForecaster(Forecaster):
-    def __init__(self, order: tuple[int,int,int] = (0,1,1), enforce_stationarity: bool = True, enforce_invertibility: bool = True):
+    def __init__(self, order: tuple[int,int,int] = (1,0,0), enforce_stationarity: bool = True, enforce_invertibility: bool = True):
         super().__init__()
         self.order = order
         self.enforce_stationarity = enforce_stationarity
@@ -173,8 +173,8 @@ class LinearRegressionForecaster(Forecaster):
 class RandomForestForecaster(Forecaster):
     def __init__(
         self,
-        n_estimators: int = 10,
-        max_depth: int = None,
+        n_estimators: int = 100,
+        max_depth: int = 5,
         min_samples_split: int = 2,
         min_samples_leaf: int = 1,
         random_state: int = None
@@ -196,7 +196,7 @@ class RandomForestForecaster(Forecaster):
         return float(pred[0])
     
 class SVRForecaster(Forecaster):
-    def __init__(self, kernel: str = 'rbf', C: float = 1.0, epsilon: float = 0.1):
+    def __init__(self, kernel: str = 'linear', C: float = 10, epsilon: float = 0.1):
         super().__init__()
         self.model = SVR(kernel=kernel, C=C, epsilon=epsilon)
 
@@ -233,9 +233,9 @@ class GradientBoostingForecaster(Forecaster):
 class DecisionTreeForecaster(Forecaster):
     def __init__(
         self,
-        max_depth: int = None,
-        min_samples_split: int = 2,
-        min_samples_leaf: int = 1,
+        max_depth: int = 5,
+        min_samples_split: int = 5,
+        min_samples_leaf: int = 2,
         random_state: int = None
     ):
         """
@@ -319,7 +319,7 @@ class LSTMForecaster(Forecaster):
         hidden_size: int = 100,
         num_layers: int = 1,
         dropout: float = 0.0,
-        lr: float = 1e-2,
+        lr: float = 1e-3,
         epochs: int = 30,
         batch_size: int = 64
     ):
@@ -434,7 +434,7 @@ class BiLSTMForecaster(Forecaster):
         hidden_size: int = 100,
         num_layers: int = 1,
         dropout: float = 0.0,
-        lr: float = 1e-2,
+        lr: float = 1e-3,
         epochs: int = 30,
         batch_size: int = 64,
     ):
@@ -557,7 +557,7 @@ class CNNLSTMForecaster(Forecaster):
         lstm_hidden_size: int = 100,
         lstm_num_layers: int = 1,
         dropout: float = 0.0,
-        lr: float = 1e-2,
+        lr: float = 1e-3,
         epochs: int = 30,
         batch_size: int = 32
     ):
