@@ -5,44 +5,32 @@ import torch.nn as nn
 class ConvAutoencoder1D(nn.Module):
     def __init__(self, window_size: int, latent_channels: int = 8, dropout_p: float = 0.05):
         super().__init__()
-        self.window_size = window_size
+        self.window_size     = window_size
         self.latent_channels = latent_channels
 
-        # Downsampled lengths after two MaxPool1d(2) layers:
+        # After one MaxPool1d(2): l1 = window_size//2
         l1 = window_size // 2
-        l2 = l1 // 2
+        # output_padding to invert the single pool
+        op = window_size - 2 * l1
 
-        # Compute output_padding for exact inversion in decoder:
-        op1 = l1 - 2 * l2   # to go from l2 -> l1
-        op2 = window_size - 2 * l1  # to go from l1 -> window_size
-
+        # Encoder: only one down‐sampling
         self.encoder = nn.Sequential(
-            nn.Conv1d(1,  32, kernel_size=3, padding=1),
+            nn.Conv1d(1, 32, kernel_size=3, padding=1),
             nn.BatchNorm1d(32),
             nn.ReLU(),
             nn.Dropout(dropout_p),
-            nn.MaxPool1d(2), # -> l1
+            nn.MaxPool1d(2),              # 10→5
 
-            nn.Conv1d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(dropout_p),
-            nn.MaxPool1d(2), # -> l2
-
-            nn.Conv1d(64, latent_channels, kernel_size=3, padding=1),
+            nn.Conv1d(32, latent_channels, kernel_size=3, padding=1),
             nn.BatchNorm1d(latent_channels),
             nn.ReLU(),
-            nn.Dropout(dropout_p),
+            # no dropout here, so latent retains full info
         )
 
+        # Decoder: one up‐sampling
         self.decoder = nn.Sequential(
-            nn.ConvTranspose1d(latent_channels, 64, kernel_size=2, stride=2, output_padding=op1), # -> l1
-            nn.InstanceNorm1d(64, affine=True),
-            nn.ReLU(),
-            nn.Dropout(dropout_p),
-
-            nn.ConvTranspose1d(64, 32, kernel_size=2, stride=2, output_padding=op2 ),
-            nn.InstanceNorm1d(32, affine=True),
+            nn.ConvTranspose1d(latent_channels, 32, kernel_size=2, stride=2, output_padding=op),
+            nn.BatchNorm1d(32),
             nn.ReLU(),
             nn.Dropout(dropout_p),
 
