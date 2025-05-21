@@ -321,7 +321,7 @@ class LSTMForecaster(Forecaster):
         dropout: float = 0.0,
         lr: float = 1e-3,
         epochs: int = 30,
-        batch_size: int = 64
+        batch_size: int = 128
     ):
         """
         Args:
@@ -436,7 +436,7 @@ class BiLSTMForecaster(Forecaster):
         dropout: float = 0.0,
         lr: float = 1e-3,
         epochs: int = 30,
-        batch_size: int = 64,
+        batch_size: int = 128,
     ):
         """
         Args:
@@ -559,7 +559,7 @@ class CNNLSTMForecaster(Forecaster):
         dropout: float = 0.0,
         lr: float = 1e-3,
         epochs: int = 30,
-        batch_size: int = 32
+        batch_size: int = 128
     ):
         super().__init__()
         self.window_size = window_size
