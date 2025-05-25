@@ -1,6 +1,5 @@
 __pycache__/
 todo.md
-main_old.ipynb
-models/
-autoencoders/
+trained_forecasters/
+trained_autoencoders/
 results/
