@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+
 class ConvAutoencoder1D(nn.Module):
     def __init__(self, window_size: int, latent_channels: int = 8, dropout_p: float = 0.05):
         super().__init__()
@@ -24,7 +25,6 @@ class ConvAutoencoder1D(nn.Module):
             nn.Conv1d(32, latent_channels, kernel_size=3, padding=1),
             nn.BatchNorm1d(latent_channels),
             nn.ReLU(),
-            # no dropout here, so latent retains full info
         )
 
         # Decoder: one up‐sampling
