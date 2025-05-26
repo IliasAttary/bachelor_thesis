@@ -3,6 +3,7 @@ import torch
 from sklearn.cluster import KMeans
 from kneed import KneeLocator
 
+
 class Forecaster:
     def __init__(self):
         self.rocs = {"raw": [], "latent": []}
@@ -14,7 +15,7 @@ class Forecaster:
     def predict(self, X):
         pass
     
-    def compute_kmeans_centers(self, k_min=2, k_max=10, random_state=0):
+    def compute_kmeans_centers(self, k_min=2, k_max=10, random_state=None):
         # Extract latent windows
         latent_windows = self.rocs.get("latent", [])
         if not latent_windows:

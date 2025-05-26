@@ -3,6 +3,7 @@ from .base import Forecaster
 import numpy as np
 import torch
 
+
 class BiLSTMForecaster(Forecaster):
     class _BiLSTMNet(torch.nn.Module):
         def __init__(
@@ -32,17 +33,15 @@ class BiLSTMForecaster(Forecaster):
 
     def __init__(
         self,
-        window_size: int,
         hidden_size: int = 100,
         num_layers: int = 1,
-        dropout: float = 0.0,
+        dropout: float = 0.2,
         lr: float = 1e-3,
         epochs: int = 30,
         batch_size: int = 128,
     ):
         """
         Args:
-            window_size: number of time steps per sample
             hidden_size: size of LSTM hidden state (per direction)
             num_layers: number of stacked LSTM layers
             dropout: dropout between LSTM layers
@@ -51,7 +50,6 @@ class BiLSTMForecaster(Forecaster):
             batch_size: training batch size
         """
         super().__init__()
-        self.window_size = window_size
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model = self._BiLSTMNet(

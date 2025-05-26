@@ -4,8 +4,12 @@ import numpy as np
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.holtwinters import ExponentialSmoothing, SimpleExpSmoothing
 
+
 class ARIMAForecaster(Forecaster):
-    def __init__(self, order: tuple[int,int,int] = (1,0,0), enforce_stationarity: bool = True, enforce_invertibility: bool = True):
+    def __init__(self, order: tuple[int,int,int] = (1,0,0), 
+                 enforce_stationarity: bool = True, 
+                 enforce_invertibility: bool = True
+                 ):
         super().__init__()
         self.order = order
         self.enforce_stationarity = enforce_stationarity

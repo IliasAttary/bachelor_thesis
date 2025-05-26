@@ -3,6 +3,7 @@ from .base import Forecaster
 import numpy as np
 from sklearn.neural_network import MLPRegressor
 
+
 class MLPForecaster(Forecaster):
     def __init__(
         self,
@@ -10,7 +11,7 @@ class MLPForecaster(Forecaster):
         activation: str = 'relu',
         solver: str = 'adam',
         learning_rate_init: float = 1e-3,
-        max_iter: int = 200,
+        max_iter: int = 400,
         early_stopping: bool = True,
         n_iter_no_change: int = 10,
         random_state: int = None
