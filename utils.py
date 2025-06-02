@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+from tslearn.metrics import dtw as tslearn_dtw
 
 def split_time_series(data, train_ratio=0.5, val_ratio=0.25):
     # Calculate indices for the splits.
@@ -82,6 +83,8 @@ def compute_distance(win1, win2, metric="euclidean"):
             num = np.dot(win1.flatten(), win2.flatten())
             denom = np.linalg.norm(win1) * np.linalg.norm(win2)
             return 1 - num / denom
+        elif metric == "dtw":
+            return tslearn_dtw(win1.reshape(-1, 1), win2.reshape(-1, 1))
         else:
             raise ValueError(f"Unsupported metric: {metric}")
 
@@ -93,6 +96,11 @@ def compute_distance(win1, win2, metric="euclidean"):
             return torch.sum(torch.abs(win1 - win2)).item()
         elif metric == "cosine":
             return 1 - F.cosine_similarity(win1.flatten(), win2.flatten(), dim=0).item()
+        elif metric == "dtw":
+            # tslearn expects shape (n_timestamps, n_features) so we transpose (C, L) → (L, C)
+            win1_np = win1.detach().cpu().numpy()
+            win2_np = win2.detach().cpu().numpy()
+            return tslearn_dtw(win1_np.T, win2_np.T)
         else:
             raise ValueError(f"Unsupported metric: {metric}")
 
