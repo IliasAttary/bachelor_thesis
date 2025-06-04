@@ -28,7 +28,7 @@ class MLPForecaster(Forecaster):
             random_state=random_state
         )
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
+    def _fit(self, X: np.ndarray, y: np.ndarray):
         self.model.fit(X, y)
 
     def predict(self, x: np.ndarray) -> float:

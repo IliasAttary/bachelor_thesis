@@ -12,7 +12,7 @@ class LinearRegressionForecaster(Forecaster):
         super().__init__()
         self.model = LinearRegression()
 
-    def fit(self, X, y):
+    def _fit(self, X, y):
         self.model.fit(X, y)
 
     def predict(self, x):
@@ -37,7 +37,7 @@ class RandomForestForecaster(Forecaster):
             random_state=random_state
         )
 
-    def fit(self, X, y):
+    def _fit(self, X, y):
         self.model.fit(X, y)
 
     def predict(self, x):
@@ -49,7 +49,7 @@ class SVRForecaster(Forecaster):
         super().__init__()
         self.model = SVR(kernel=kernel, C=C, epsilon=epsilon)
 
-    def fit(self, X, y):
+    def _fit(self, X, y):
         self.model.fit(X, y)
 
     def predict(self, x):
@@ -62,7 +62,7 @@ class GradientBoostingForecaster(Forecaster):
         n_estimators: int = 100,
         learning_rate: float = 0.1,
         max_depth: int = 3,
-        random_state: int = 0
+        random_state: int = None
     ):
         super().__init__()
         self.model = GradientBoostingRegressor(
@@ -72,7 +72,7 @@ class GradientBoostingForecaster(Forecaster):
             random_state=random_state
         )
 
-    def fit(self, X, y):
+    def _fit(self, X, y):
         self.model.fit(X, y)
 
     def predict(self, x):
@@ -102,7 +102,7 @@ class DecisionTreeForecaster(Forecaster):
             random_state=random_state
         )
 
-    def fit(self, X, y):
+    def _fit(self, X, y):
         self.model.fit(X, y)
 
     def predict(self, x):

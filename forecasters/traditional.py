@@ -15,7 +15,7 @@ class ARIMAForecaster(Forecaster):
         self.enforce_stationarity = enforce_stationarity
         self.enforce_invertibility = enforce_invertibility
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
+    def _fit(self, X: np.ndarray, y: np.ndarray):
         # No global training—ARIMA will be fit on each window at predict time.
         return self
 
@@ -63,7 +63,7 @@ class ExpSmoothingForecaster(Forecaster):
         self.smoothing_seasonal = smoothing_seasonal
         self.optimized = optimized
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
+    def _fit(self, X: np.ndarray, y: np.ndarray):
         # No global training
         return self
 
