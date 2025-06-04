@@ -58,13 +58,16 @@ class LSTMForecaster(Forecaster):
         self.epochs = epochs
         self.batch_size = batch_size
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
+    def fit(self, X: np.ndarray, y: np.ndarray, generator=None):
         # to tensors and reshape for LSTM: (batch, seq_len, input_size=1)
         X_t = torch.from_numpy(X.astype(np.float32)).unsqueeze(-1).to(self.device)
         y_t = torch.from_numpy(y.astype(np.float32)).unsqueeze(-1).to(self.device)
 
         dataset = torch.utils.data.TensorDataset(X_t, y_t)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        loader = torch.utils.data.DataLoader(dataset, 
+                                             batch_size=self.batch_size, 
+                                             shuffle=True,
+                                             generator=generator)
 
         self.model.train()
         for _ in range(self.epochs):

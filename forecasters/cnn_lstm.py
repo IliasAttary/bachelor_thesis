@@ -75,13 +75,16 @@ class CNNLSTMForecaster(Forecaster):
         self.epochs = epochs
         self.batch_size = batch_size
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
+    def fit(self, X: np.ndarray, y: np.ndarray, generator=None):
         # X: (n_samples, window_size), y: (n_samples,)
         X_t = torch.from_numpy(X.astype(np.float32)).unsqueeze(-1).to(self.device)
         y_t = torch.from_numpy(y.astype(np.float32)).unsqueeze(-1).to(self.device)
 
         dataset = torch.utils.data.TensorDataset(X_t, y_t)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        loader = torch.utils.data.DataLoader(dataset, 
+                                             batch_size=self.batch_size, 
+                                             shuffle=True,
+                                             generator=generator)
 
         self.model.train()
         for _ in range(self.epochs):
