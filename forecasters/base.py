@@ -9,8 +9,8 @@ class Forecaster:
         self.rocs = {"raw": [], "latent": []}
         self.centers = {"raw": [], "latent": []}
 
-    def fit(self, X, y):
-        pass
+    def fit(self, X, y, generator=None):
+        return self._fit(X, y)
 
     def predict(self, X):
         pass
