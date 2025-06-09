@@ -5,7 +5,7 @@ class DriftDetector():
     def __init__(self):
         self.drift_idx = []
 
-    def update(self, value: float, t: int):
+    def update(self, value: float, idx: int):
         pass
 
     def reset(self):
@@ -15,118 +15,128 @@ class DriftDetector():
         return self.drift_idx
 
 
-class ReconstructionErrorDetector(DriftDetector):
+class ZScoreReconstructionDriftDetector(DriftDetector): 
     def __init__(self, 
                  buffer_size: int = 200, 
                  z_threshold: float = 2.5,
-                 use_fixed_threshold=False, 
                  retain_fraction: float = 0.25):
-        
         super().__init__()
         self.buffer_size = buffer_size
         self.z_threshold = z_threshold
-        self.use_fixed_threshold = use_fixed_threshold
         self.retain_fraction = retain_fraction
         self.buffer = []
 
-    def update(self, reconstruction_error: float, idx: int):
+    def update(self, reconstruction_error: float, idx: int) -> bool:
         self.buffer.append(reconstruction_error)
         if len(self.buffer) > self.buffer_size:
             self.buffer.pop(0)
 
+        # if buffer is full, compute z-score and check for drift
         if len(self.buffer) == self.buffer_size:
-            if self.use_fixed_threshold:
-                mean = np.mean(self.buffer)
-                std = np.std(self.buffer)
-                if std > 0:
-                    z_score = (reconstruction_error - mean) / std
-                    if z_score > self.z_threshold:
-                        self.drift_idx.append(idx)
-                        self.reset()
-            else:
-                # Adaptive mode: use empirical percentile as threshold
-                threshold = np.percentile(self.buffer, 95)
-                if reconstruction_error > threshold:
+            mean = np.mean(self.buffer)
+            std = np.std(self.buffer)
+            if std > 0:
+                z_score = (reconstruction_error - mean) / std
+                # if error is z_threshold stds above the mean, then a drift is detected
+                if z_score > self.z_threshold:
                     self.drift_idx.append(idx)
                     self.reset()
+                    return True
+
+        return False
 
     def reset(self):
+        # retain a portion of the buffer after drift
         retain = int(self.retain_fraction * self.buffer_size)
         self.buffer = self.buffer[-retain:] if retain > 0 else []
 
 
-class DynamicCUSUMDriftDetector(DriftDetector):
-    def __init__(self, buffer_size: int = 200, 
-                 margin_factor: float = 0.05,
-                 threshold_factor: float = 5.0,
+class PercentileReconstructionDriftDetector(DriftDetector):
+    def __init__(self, 
+                 buffer_size: int = 200, 
+                 percentile: float = 95,
                  retain_fraction: float = 0.25):
-        
         super().__init__()
         self.buffer_size = buffer_size
-        self.margin_factor = margin_factor
-        self.threshold_factor = threshold_factor
+        self.percentile = percentile
         self.retain_fraction = retain_fraction
         self.buffer = []
-        self.cusum = 0
 
-    def update(self, reconstruction_error: float, t: int):
+    def update(self, reconstruction_error: float, idx: int) -> bool:
         self.buffer.append(reconstruction_error)
         if len(self.buffer) > self.buffer_size:
             self.buffer.pop(0)
 
-        if len(self.buffer) < self.buffer_size:
-            return
+        # if buffer is full, check if error exceeds percentile threshold
+        if len(self.buffer) == self.buffer_size:
+            threshold = np.percentile(self.buffer, self.percentile)
+            # if error exceeds the given percentile, then a drift is detected
+            if reconstruction_error > threshold:
+                self.drift_idx.append(idx)
+                self.reset()
+                return True  # drift detected
 
-        target_mean = np.mean(self.buffer)
-        buffer_std = np.std(self.buffer)
-
-        drift_margin = self.margin_factor * buffer_std
-        threshold = self.threshold_factor * drift_margin
-
-        self.cusum += reconstruction_error - target_mean - drift_margin
-        self.cusum = max(0, self.cusum)
-
-        if self.cusum > threshold:
-            self.drift_idx.append(t)
-            self.reset()
+        return False  # no drift
 
     def reset(self):
+        # retain a portion of the buffer after drift
         retain = int(self.retain_fraction * self.buffer_size)
         self.buffer = self.buffer[-retain:] if retain > 0 else []
-        self.cusum = 0
 
 
-class LatentDistanceDetector(DriftDetector):
-    def __init__(self, 
-                 buffer_size=200, 
-                 threshold=None, 
-                 percentile=95, 
-                 retain_fraction=0.25):
-        
+class TrendDetector(DriftDetector):
+    """""
+    Based on: Jaworski, M., Rutkowski, L., Angelov, P. (2020): 
+    Concept Drift Detection Using Autoencoders in Data Streams Processing.
+    """""
+    def __init__(self, lambda_: float = 0.98, threshold: float = 0.001):
         super().__init__()
+        self.lambda_ = lambda_
         self.threshold = threshold
-        self.percentile = percentile
-        self.buffer_size = buffer_size
-        self.retain_fraction = retain_fraction
-        self.buffer = []
 
-    def update(self, value: float, t: int):
-        self.buffer.append(value)
-        if len(self.buffer) > self.buffer_size:
-            self.buffer.pop(0)
+        self.TC = 0.0     # ∑ t * C(M_t)
+        self.T = 0.0      # ∑ t
+        self.C_sum = 0.0  # ∑ C(M_t)
+        self.T2 = 0.0     # ∑ t^2
+        self.n = 0.0      # ∑ 1
+        self.t = 0        # current timestep (of the full window)
 
-        if self.threshold is not None:
-            if value > self.threshold:
-                self.drift_idx.append(t)
-        elif len(self.buffer) == self.buffer_size:
-            dynamic_thresh = np.percentile(self.buffer, self.percentile)
-            if value > dynamic_thresh:
-                self.drift_idx.append(t)
-                self.reset()
+    def update(self, reconstruction_error: float, idx: int) -> bool:
+        self.t += 1
+        t = self.t
+
+        λ = self.lambda_
+
+        # Update exponentially decayed stats
+        self.TC   = λ * self.TC   + t * reconstruction_error
+        self.T    = λ * self.T    + t
+        self.C_sum= λ * self.C_sum+ reconstruction_error
+        self.T2   = λ * self.T2   + t * t
+        self.n    = λ * self.n    + 1
+
+        # Compute trend score Q(C, t)
+        numerator = self.n * self.TC - self.T * self.C_sum
+        denominator = self.n * self.T2 - self.T ** 2
+
+        if denominator == 0:
+            return False  # not enough variation yet
+
+        Q = numerator / denominator
+
+        if Q > self.threshold:
+            self.drift_idx.append(idx)
+            self.reset()
+            return True
+
+        return False
 
     def reset(self):
-        retain = int(self.buffer_size * self.retain_fraction)
-        self.buffer = self.buffer[-retain:] if retain > 0 else []
+        self.TC = 0.0
+        self.T = 0.0
+        self.C_sum = 0.0
+        self.T2 = 0.0
+        self.n = 0.0
+        self.t = 0
 
 
 class HDDM_A_Detector(DriftDetector):
@@ -138,14 +148,12 @@ class HDDM_A_Detector(DriftDetector):
     def __init__(self, delta=0.0001):
         super().__init__()
         self.delta = delta
-        self.window = []
         self.total = 0.0
         self.min_mean = float('inf')
         self.count = 0
 
-    def update(self, value: float, t: int):
-        self.window.append(value)
-        self.total += value
+    def update(self, error: float, idx: int) -> bool:
+        self.total += error
         self.count += 1
 
         mean = self.total / self.count
@@ -155,12 +163,55 @@ class HDDM_A_Detector(DriftDetector):
         eps = np.sqrt((1 / (2 * self.count)) * np.log(1 / self.delta))
 
         if mean > self.min_mean + eps:
-            self.drift_idx.append(t)
+            self.drift_idx.append(idx)
             self.reset()
+            return True  # drift detected
+
+        return False  # no drift
 
     def reset(self):
-        super().reset()
-        self.window = []
         self.total = 0.0
         self.min_mean = float('inf')
         self.count = 0
+
+class HDDM_W_Detector(DriftDetector):
+    """
+    HDDM_W: Hoeffding Drift Detection Method using a weighted (exponentially decayed) moving average.
+    Based on: Baena-Garcia et al. (2006)
+    """
+
+    def __init__(self, delta: float = 0.0001, alpha: float = 0.98):
+        """
+        Parameters:
+        - delta: confidence level for Hoeffding bound (smaller = more conservative)
+        - alpha: decay factor for exponential weighting (closer to 1 = longer memory)
+        """
+        super().__init__()
+        self.delta = delta
+        self.alpha = alpha
+        self.weighted_mean = 0.0
+        self.min_weighted_mean = float('inf')
+        self.weighted_count = 0.0  # sum of decayed weights
+
+    def update(self, error: float, idx: int) -> bool:
+        # Exponentially decayed mean update
+        self.weighted_mean = self.alpha * self.weighted_mean + (1 - self.alpha) * error
+        self.weighted_count = self.alpha * self.weighted_count + (1 - self.alpha)
+
+        # Track min of weighted mean over time
+        self.min_weighted_mean = min(self.min_weighted_mean, self.weighted_mean)
+
+        # Compute Hoeffding bound using sum of decayed weights
+        eps = np.sqrt((1 / (2 * self.weighted_count)) * np.log(1 / self.delta))
+
+        if self.weighted_mean > self.min_weighted_mean + eps:
+            self.drift_idx.append(idx)
+            self.reset()
+            return True
+
+        return False
+
+    def reset(self):
+        self.weighted_mean = 0.0
+        self.min_weighted_mean = float('inf')
+        self.weighted_count = 0.0
