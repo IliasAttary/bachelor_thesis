@@ -17,9 +17,9 @@ class DriftDetector():
 
 class ZScoreReconstructionDriftDetector(DriftDetector): 
     def __init__(self, 
-                 buffer_size: int = 200, 
-                 z_threshold: float = 2.5,
-                 retain_fraction: float = 0.25):
+                 buffer_size: int = 300, 
+                 z_threshold: float = 5.5,
+                 retain_fraction: float = 0):
         super().__init__()
         self.buffer_size = buffer_size
         self.z_threshold = z_threshold
@@ -53,9 +53,9 @@ class ZScoreReconstructionDriftDetector(DriftDetector):
 
 class PercentileReconstructionDriftDetector(DriftDetector):
     def __init__(self, 
-                 buffer_size: int = 200, 
-                 percentile: float = 95,
-                 retain_fraction: float = 0.25):
+                 buffer_size: int = 300, 
+                 percentile: float = 99,
+                 retain_fraction: float = 0):
         super().__init__()
         self.buffer_size = buffer_size
         self.percentile = percentile
@@ -82,61 +82,6 @@ class PercentileReconstructionDriftDetector(DriftDetector):
         # retain a portion of the buffer after drift
         retain = int(self.retain_fraction * self.buffer_size)
         self.buffer = self.buffer[-retain:] if retain > 0 else []
-
-
-class TrendDetector(DriftDetector):
-    """""
-    Based on: Jaworski, M., Rutkowski, L., Angelov, P. (2020): 
-    Concept Drift Detection Using Autoencoders in Data Streams Processing.
-    """""
-    def __init__(self, lambda_: float = 0.98, threshold: float = 0.001):
-        super().__init__()
-        self.lambda_ = lambda_
-        self.threshold = threshold
-
-        self.TC = 0.0     # ∑ t * C(M_t)
-        self.T = 0.0      # ∑ t
-        self.C_sum = 0.0  # ∑ C(M_t)
-        self.T2 = 0.0     # ∑ t^2
-        self.n = 0.0      # ∑ 1
-        self.t = 0        # current timestep (of the full window)
-
-    def update(self, reconstruction_error: float, idx: int) -> bool:
-        self.t += 1
-        t = self.t
-
-        λ = self.lambda_
-
-        # Update exponentially decayed stats
-        self.TC   = λ * self.TC   + t * reconstruction_error
-        self.T    = λ * self.T    + t
-        self.C_sum= λ * self.C_sum+ reconstruction_error
-        self.T2   = λ * self.T2   + t * t
-        self.n    = λ * self.n    + 1
-
-        # Compute trend score Q(C, t)
-        numerator = self.n * self.TC - self.T * self.C_sum
-        denominator = self.n * self.T2 - self.T ** 2
-
-        if denominator == 0:
-            return False  # not enough variation yet
-
-        Q = numerator / denominator
-
-        if Q > self.threshold:
-            self.drift_idx.append(idx)
-            self.reset()
-            return True
-
-        return False
-
-    def reset(self):
-        self.TC = 0.0
-        self.T = 0.0
-        self.C_sum = 0.0
-        self.T2 = 0.0
-        self.n = 0.0
-        self.t = 0
 
 
 class HDDM_A_Detector(DriftDetector):
