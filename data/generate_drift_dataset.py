@@ -9,7 +9,7 @@ def ar1(length, phi, noise_std):
         x[t] = phi * x[t - 1] + np.random.normal(0, noise_std)
     return x
 
-# Original function: single drift generation
+
 def generate_drift_dataset(
     length=4000,
     drift_point=2000,
@@ -129,28 +129,28 @@ def generate_multi_drift_dataset(
 
     return output_path
 
-# # === Generate all datasets ===
+# === Generate all datasets ===
 
-# # Original: Sudden drift at 5500
-# generate_drift_dataset(
-#     length=7000,
-#     drift_point=5500,
-#     gradual=False,
-#     seed=42,
-#     output_file="SUD.csv"
-# )
+# Sudden drift at 5500
+generate_drift_dataset(
+    length=7000,
+    drift_point=5500,
+    gradual=False,
+    seed=42,
+    output_file="SUD.csv"
+)
 
-# # Original: Gradual drift at 5500 (duration 600)
-# generate_drift_dataset(
-#     length=7000,
-#     drift_point=5500,
-#     gradual=True,
-#     gradual_duration=600,
-#     seed=42,
-#     output_file="GRD.csv"
-# )
+# Gradual drift at 5500 (duration 600)
+generate_drift_dataset(
+    length=7000,
+    drift_point=5500,
+    gradual=True,
+    gradual_duration=600,
+    seed=42,
+    output_file="GRD.csv"
+)
 
-# New: Gradual drift at 5500 (duration 600) + Sudden drift at 6600
+# Gradual drift at 5500 (duration 600) + Sudden drift at 6600
 generate_multi_drift_dataset(
     total_length=7000,
     drift_configs=[
