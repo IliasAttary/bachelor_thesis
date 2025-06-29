@@ -18,8 +18,8 @@ class DriftDetector():
 class ZScoreReconstructionDriftDetector(DriftDetector): 
     def __init__(self, 
                  buffer_size: int = 300, 
-                 z_threshold: float = 5.5,
-                 retain_fraction: float = 0):
+                 z_threshold: float = 3.5,
+                 retain_fraction: float = 0.25):
         super().__init__()
         self.buffer_size = buffer_size
         self.z_threshold = z_threshold
@@ -54,8 +54,8 @@ class ZScoreReconstructionDriftDetector(DriftDetector):
 class PercentileReconstructionDriftDetector(DriftDetector):
     def __init__(self, 
                  buffer_size: int = 300, 
-                 percentile: float = 99,
-                 retain_fraction: float = 0):
+                 percentile: float = 97,
+                 retain_fraction: float = 0.25):
         super().__init__()
         self.buffer_size = buffer_size
         self.percentile = percentile
@@ -90,7 +90,7 @@ class HDDM_A_Detector(DriftDetector):
     Based on: Baena-Garcia et al. (2006)
     """
 
-    def __init__(self, delta=0.0001):
+    def __init__(self, delta=0.001):
         super().__init__()
         self.delta = delta
         self.total = 0.0
@@ -125,7 +125,7 @@ class HDDM_W_Detector(DriftDetector):
     Based on: Baena-Garcia et al. (2006)
     """
 
-    def __init__(self, delta: float = 0.0001, alpha: float = 0.98):
+    def __init__(self, delta: float = 0.001, alpha: float = 0.90): # Try delta = 0.001, 0.005, 0.01
         """
         Parameters:
         - delta: confidence level for Hoeffding bound (smaller = more conservative)
