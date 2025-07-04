@@ -24,6 +24,12 @@ class Forecaster:
         if not windows:
             raise ValueError(f"No {mode} windows available for clustering.")
 
+        # Not enough samples to form at least 2 clusters
+        if len(windows) < 2:
+            print(f"Skipping clustering for mode={mode}: only {len(windows)} sample(s)")
+            self.centers[mode] = []
+            return None
+
         # Determine integer bounds for k
         k_min_int = max(2, int(k_min))
         k_max_int = max(k_min_int, int(k_max))
