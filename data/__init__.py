@@ -2,3 +2,9 @@ from .temperatures import *
 from .births import *
 from .saugeen import *
 from .power import *
+from .solar import *
+from .wind import *
+from .exchangeRate import *
+from .sp500 import *
+from .nasdaq import *
+from .treasury import *
