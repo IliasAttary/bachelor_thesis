@@ -2,15 +2,15 @@ import os
 import numpy as np
 import pandas as pd
 
-class NASDAQCOM:
+class WindSpeed:
     def __init__(self, path=None, length=None):
         # Determine file path
         if path is None:
             base = os.path.dirname(os.path.abspath(__file__))
-            path = os.path.join(base, 'NASDAQCOM.csv')
+            path = os.path.join(base, 'daily_average_wind_speed.csv')
 
         # Read CSV, parse 'Date' as datetime index
-        self.df = pd.read_csv(path, parse_dates=["observation_date"], index_col="observation_date")
+        self.df = pd.read_csv(path, parse_dates=["date"], index_col="date")
         # Keep only last "length" elements
         if length is not None:
             self.df = self.df.iloc[-length:]
@@ -18,7 +18,7 @@ class NASDAQCOM:
         self.raw = self.df.copy()
 
         # Create 1‑D numeric array
-        series = self.df["NASDAQCOM"].astype(float)
+        series = self.df["awnd"].astype(float)
         self.index = series.index
         self.data = series.to_numpy(copy=True)
 

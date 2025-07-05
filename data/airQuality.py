@@ -2,15 +2,15 @@ import os
 import numpy as np
 import pandas as pd
 
-class SP500:
+class Air:
     def __init__(self, path=None, length=None):
         # Determine file path
         if path is None:
             base = os.path.dirname(os.path.abspath(__file__))
-            path = os.path.join(base, 'SP500.csv')
+            path = os.path.join(base, 'C6H6.csv')
 
         # Read CSV, parse 'Date' as datetime index
-        self.df = pd.read_csv(path, parse_dates=["observation_date"], index_col="observation_date")
+        self.df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
         # Keep only last "length" elements
         if length is not None:
             self.df = self.df.iloc[-length:]
@@ -18,7 +18,7 @@ class SP500:
         self.raw = self.df.copy()
 
         # Create 1‑D numeric array
-        series = self.df["SP500"].astype(float)
+        series = self.df["C6H6(GT)"].astype(float)
         self.index = series.index
         self.data = series.to_numpy(copy=True)
 
