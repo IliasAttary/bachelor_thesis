@@ -4,7 +4,7 @@ import torch.nn as nn
 
 
 class ConvAutoencoder1D(nn.Module):
-    def __init__(self, window_size: int, latent_channels: int = 8, dropout_p: float = 0.05):
+    def __init__(self, window_size: int, latent_channels: int = 2, dropout_p: float = 0.3):
         super().__init__()
         self.window_size = window_size
         self.latent_channels = latent_channels
@@ -14,6 +14,7 @@ class ConvAutoencoder1D(nn.Module):
         # output_padding to invert the single pool
         op = window_size - 2 * l1
 
+        # Encoder
         self.encoder = nn.Sequential(
             nn.Conv1d(1, 32, kernel_size=3, padding=1),
             nn.BatchNorm1d(32),
@@ -30,7 +31,7 @@ class ConvAutoencoder1D(nn.Module):
             nn.ReLU()
         )
 
-        # Decoder: match the structure in reverse order
+        # Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose1d(latent_channels, 64, kernel_size=2, stride=2, output_padding=op),
             nn.BatchNorm1d(64),
