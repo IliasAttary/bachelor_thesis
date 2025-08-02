@@ -8,3 +8,4 @@ from .treasury import *
 from .windSpeed import *
 from .airQuality import *
 from .bike import *
+from .officeTemp import *
