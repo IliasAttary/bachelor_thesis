@@ -29,7 +29,7 @@ class FixedRefHoeffdingDetector(DriftDetector):
 
     def _eps(self) -> float:
         # W = self.count; guard W>=1
-        W = max(1, self.count)
+        W = max(15, self.count)
         return np.sqrt((self.r * self.r * np.log(2.0 / self.sigma)) / (2.0 * W))
 
     def update(self, value: float, idx: int) -> bool:
