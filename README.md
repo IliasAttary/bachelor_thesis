@@ -14,6 +14,7 @@ The forecasting pool includes classical statistical methods, linear and kernel-b
 .
 ├── data/                     # Dataset loaders (univariate)
 ├── forecasters/              # Forecasting models (statistical & ML)
+├── thesis/                   # Compiled thesis PDF
 ├── autoencoder.py            # 1D convolutional autoencoder (PyTorch)
 ├── drift_detectors.py        # Hoeffding-style drift detectors
 ├── utils.py                  # Windowing, normalization, distances, helpers
