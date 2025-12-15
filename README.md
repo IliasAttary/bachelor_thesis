@@ -1,7 +1,6 @@
 # Autoencoder Embeddings for Adaptive Model Selection and Drift Detection (AE-AMS)
 
-This repository contains the code for my bachelor’s thesis **AE-AMS**, a framework for adaptive model selection in time series forecasting.  
-The approach combines convolutional autoencoder representations with region-of-competence–based model selection to dynamically choose forecasting models.
+This repository contains the code for my bachelor’s thesis **AE-AMS**, a framework for adaptive model selection in time series forecasting. The approach combines convolutional autoencoder representations with region-of-competence–based model selection to dynamically choose forecasting models.
 
 ## Core idea
 
