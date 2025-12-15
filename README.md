@@ -7,6 +7,8 @@ The approach combines convolutional autoencoder representations with region-of-c
 
 AE-AMS uses autoencoder embeddings as the feature space in which similarities between time-series windows are measured. Windows from a validation set are encoded using a convolutional autoencoder and assigned to the forecasting model that performs best on them, forming regions of competence. During online forecasting, the current window is encoded and compared to these regions in latent space to select the most suitable model.
 
+The forecasting pool includes classical statistical methods, linear and kernel-based regressors, tree-based ensembles, and multiple neural architectures such as MLPs, LSTMs, BiLSTMs, and CNN–LSTM hybrids.
+
 ## Repository layout
 
 ```text
